@@ -1,57 +1,44 @@
-- include: centos.yml
-  when: ansible_distribution == 'CentOS'
-
 - include: debian.yml
-  when: ansible_distribution == 'Debian'
 
-- name: "Download the DynamoDB local jar"
+- name: Check if DynamoDB is installed
+  stat:
+    path: /opt/dynamodb_{{ dynamodb_version }}/DynamoDBLocal.jar
+  register: install_check
+
+- name: Download the DynamoDB local jar
   get_url:
-    url="https://s3-us-west-2.amazonaws.com/dynamodb-local/dynamodb_local_{{ dynamodb_version }}.tar.gz"
-    sha256sum="{{ dynamodb_sha }}"
-    dest=/tmp
+   url: http://dynamodb-local.s3-website-us-west-2.amazonaws.com/dynamodb_local_{{ dynamodb_version }}.tar.gz
+   checksum: sha256:{{ dynamodb_sha }}
+   dest: /tmp/dynamodb_local_{{ dynamodb_version }}.tar.gz
   notify:
-    - Restart DynamoDB
-  register: dynamodb_download
-  tags:
-    - dynamodb
-    - files
-    - pkgs
+   - Restart DynamoDB
+  when: not install_check.stat.exists
 
-- name: "Install DynamoDB in /opt/dynamodb"
-  shell: |
-    chdir=/tmp
-    mkdir dynamodb_local_{{ dynamodb_version }} && \
-    cd dynamodb_local_{{ dynamodb_version }} && \
-    tar -zxvf ../dynamodb_local_{{ dynamodb_version }}.tar.gz && \
-    mkdir -p /opt/dynamodb && \
-    rsync -av ./ /opt/dynamodb/ && \
-    rm -rf dynamodb_local_{{ dynamodb_version }}/
-  when: dynamodb_download.changed
-  tags:
-    - dynamodb
-    - files
-    - pkgs
+- name: ensure directory
+  file:
+   path: /opt/dynamodb_{{ dynamodb_version }}
+   state: directory
+  when: not install_check.stat.exists
 
-- name: "Drop an init.d file for DynamoDB"
+- name: Unarchive
+  unarchive:
+   copy: no
+   src: /tmp/dynamodb_local_{{ dynamodb_version }}.tar.gz
+   dest: /opt/dynamodb_{{ dynamodb_version }}
+   creates: /opt/dynamodb_{{ dynamodb_version }}/DynamoDBLocal.jar
+  when: not install_check.stat.exists
+
+- name: "Drop an init file for DynamoDB"
   template: >
-    src=dynamodb.init.sh
-    dest=/etc/init.d/dynamodb
+    src=dynamodb.conf
+    dest=/etc/init/dynamodb.conf
     mode=0700
     owner=root
     group=root
   notify:
     - Restart DynamoDB
-  tags:
-    - dynamodb
-    - files
 
 - name: "Make sure DynamoDB local development is running"
   service: >
     name=dynamodb
-    state=running
-    enabled=yes
-    runlevel=5
-    pattern="DynamoDBLocal.jar"
-  tags:
-    - dynamodb
-    - services
+    state=started
