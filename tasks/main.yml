@@ -28,6 +28,11 @@
    creates: /opt/dynamodb_{{ dynamodb_version }}/DynamoDBLocal.jar
   when: not install_check.stat.exists
 
+- name: Cleanup
+  file:
+    path: /tmp/dynamodb_local_{{ dynamodb_version }}.tar.gz
+    state: absent
+
 - name: "Drop an init file for DynamoDB"
   template: >
     src=dynamodb.conf
